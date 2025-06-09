@@ -16,23 +16,27 @@ import io.swagger.models.properties.RefProperty;
 import io.swagger.models.properties.StringProperty;
 import org.apache.commons.lang.StringUtils;
 import org.openmrs.CareSetting;
+import org.openmrs.Drug;
+import org.openmrs.DrugOrder;
 import org.openmrs.Order;
 import org.openmrs.OrderType;
 import org.openmrs.Patient;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.webservices.docs.swagger.core.property.EnumProperty;
+import org.openmrs.module.webservices.rest.SimpleObject;
 import org.openmrs.module.webservices.rest.web.ConversionUtil;
 import org.openmrs.module.webservices.rest.web.RequestContext;
 import org.openmrs.module.webservices.rest.web.RestConstants;
 import org.openmrs.module.webservices.rest.web.annotation.Resource;
 import org.openmrs.module.webservices.rest.web.api.RestService;
+import org.openmrs.module.webservices.rest.web.representation.CustomRepresentation;
 import org.openmrs.module.webservices.rest.web.representation.DefaultRepresentation;
 import org.openmrs.module.webservices.rest.web.representation.FullRepresentation;
 import org.openmrs.module.webservices.rest.web.representation.Representation;
 import org.openmrs.module.webservices.rest.web.resource.api.PageableResult;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription;
-import org.openmrs.module.webservices.rest.web.resource.impl.EmptySearchResult;
 import org.openmrs.module.webservices.rest.web.resource.impl.NeedsPaging;
+import org.openmrs.module.webservices.rest.web.response.ConversionException;
 import org.openmrs.module.webservices.rest.web.response.InvalidSearchException;
 import org.openmrs.module.webservices.rest.web.response.ObjectNotFoundException;
 import org.openmrs.module.webservices.rest.web.response.ResourceDoesNotSupportOperationException;
@@ -311,7 +315,42 @@ public class OrderResource1_10 extends OrderResource1_8 {
 		});
 		return sortedList;
 	}
-	
+
+	/**
+	 * If this resource is a DrugOrder, then we add a strength property to the input, and return it
+	 *
+	 * @param simple simplified representation which will be decorated with the strength property
+	 *
+	 * @param delegate the DrugOrder object that simple represents
+	 */
+	private void decorateWithStrengthProperty(SimpleObject simple, Order delegate) {
+		OrderType drugOrderType = Context.getOrderService().getOrderTypeByName("Drug order");
+		if (delegate.getOrderType().equals(drugOrderType)) {
+			Drug drug = ((DrugOrder) delegate).getDrug();
+			if (drug != null) {
+				simple.add(RestConstants.PROPERTY_FOR_STRENGTH, drug.getStrength() != null ? drug.getStrength() : "[no strength]");
+			} else {
+				simple.add(RestConstants.PROPERTY_FOR_STRENGTH,"[no strength]");
+			}
+		}
+	}
+
+	/**
+	 * @see org.openmrs.module.webservices.rest.web.resource.impl.BaseDelegatingResource#asRepresentation(Object, Representation)
+	 */
+	@Override
+	public SimpleObject asRepresentation(Order delegate, Representation representation) throws ConversionException {
+		DelegatingResourceDescription repDescription;
+		if (representation instanceof CustomRepresentation) {
+			repDescription = ConversionUtil.getCustomRepresentationDescription((CustomRepresentation) representation);
+			return convertDelegateToRepresentation(delegate, repDescription);
+		}
+
+		SimpleObject simple = super.asRepresentation(delegate, representation);
+		decorateWithStrengthProperty(simple, delegate);
+		return simple;
+	}
+
 	/**
 	 * @see org.openmrs.module.webservices.rest.web.resource.impl.BaseDelegatingResource#getResourceVersion()
 	 */

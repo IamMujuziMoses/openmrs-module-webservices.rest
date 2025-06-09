@@ -220,5 +220,4 @@ public class OrderSearchHandler2_3Test extends RestControllerTestUtils {
         Assert.assertEquals(1, orders.size());
         Assert.assertEquals(PropertyUtils.getProperty(orders.get(0), "uuid"), "e1f95924-697a-11e3-bd76-0800271c1b75");
     }
-
 }
