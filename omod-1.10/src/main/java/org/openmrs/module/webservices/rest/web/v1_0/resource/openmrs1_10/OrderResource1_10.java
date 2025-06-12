@@ -16,8 +16,6 @@ import io.swagger.models.properties.RefProperty;
 import io.swagger.models.properties.StringProperty;
 import org.apache.commons.lang.StringUtils;
 import org.openmrs.CareSetting;
-import org.openmrs.Drug;
-import org.openmrs.DrugOrder;
 import org.openmrs.Order;
 import org.openmrs.OrderType;
 import org.openmrs.Patient;
@@ -317,25 +315,6 @@ public class OrderResource1_10 extends OrderResource1_8 {
 	}
 
 	/**
-	 * If this resource is a DrugOrder, then we add a strength property to the input, and return it
-	 *
-	 * @param simple simplified representation which will be decorated with the strength property
-	 *
-	 * @param delegate the DrugOrder object that simple represents
-	 */
-	private void decorateWithStrengthProperty(SimpleObject simple, Order delegate) {
-		OrderType drugOrderType = Context.getOrderService().getOrderTypeByName("Drug order");
-		if (delegate.getOrderType().equals(drugOrderType)) {
-			Drug drug = ((DrugOrder) delegate).getDrug();
-			if (drug != null) {
-				simple.add(RestConstants.PROPERTY_FOR_STRENGTH, drug.getStrength() != null ? drug.getStrength() : "[no strength]");
-			} else {
-				simple.add(RestConstants.PROPERTY_FOR_STRENGTH,"[no strength]");
-			}
-		}
-	}
-
-	/**
 	 * @see org.openmrs.module.webservices.rest.web.resource.impl.BaseDelegatingResource#asRepresentation(Object, Representation)
 	 */
 	@Override
@@ -347,7 +326,12 @@ public class OrderResource1_10 extends OrderResource1_8 {
 		}
 
 		SimpleObject simple = super.asRepresentation(delegate, representation);
-		decorateWithStrengthProperty(simple, delegate);
+		OrderType drugOrderType = Context.getOrderService().getOrderTypeByName("Drug order");
+		if (delegate.getOrderType().equals(drugOrderType)) {
+			String strength = (String) findAndInvokeSubclassHandlerMethod("drugorder",
+					"getStrength", delegate);
+			simple.add(RestConstants.PROPERTY_FOR_STRENGTH, strength);
+		}
 		return simple;
 	}
 
