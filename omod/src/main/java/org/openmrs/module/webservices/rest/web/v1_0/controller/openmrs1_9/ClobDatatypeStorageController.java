@@ -9,6 +9,7 @@
  */
 package org.openmrs.module.webservices.rest.web.v1_0.controller.openmrs1_9;
 
+import com.google.common.net.HttpHeaders;
 import org.apache.commons.io.IOUtils;
 import org.openmrs.api.DatatypeService;
 import org.openmrs.api.db.ClobDatatypeStorage;
@@ -26,6 +27,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 
 @Controller
 @RequestMapping(value = "/rest/" + RestConstants.VERSION_1 + "/clobdata")
@@ -39,8 +41,9 @@ public class ClobDatatypeStorageController {
 	public String create(@RequestParam MultipartFile file, HttpServletRequest request, HttpServletResponse response)
 	        throws IOException {
 		ClobDatatypeStorage clobData = new ClobDatatypeStorage();
-		String encoding = request.getHeader("Content-Encoding");
-		clobData.setValue(IOUtils.toString(file.getInputStream(), encoding));
+		// Read the upload as UTF-8 to pair with the UTF-8 output in retrieve(). The Content-Encoding request
+		// header describes compression (e.g. gzip), not a charset, so it must not be used as the read charset.
+		clobData.setValue(IOUtils.toString(file.getInputStream(), StandardCharsets.UTF_8));
 		clobData = datatypeService.saveClobDatatypeStorage(clobData);
 		response.setStatus(HttpServletResponse.SC_CREATED);
 		return clobData.getUuid();
@@ -54,6 +57,11 @@ public class ClobDatatypeStorageController {
 		if (clobData == null) {
 			response.setStatus(HttpServletResponse.SC_NOT_FOUND);
 		} else {
+			// Serve the stored content as plain text and instruct browsers not to MIME-sniff it. Clob content is
+			// arbitrary, unsanitized user input, so without these headers a browser can interpret an uploaded HTML
+			// payload as HTML and execute embedded scripts, resulting in stored XSS.
+			response.setContentType("text/plain;charset=UTF-8");
+			response.setHeader(HttpHeaders.X_CONTENT_TYPE_OPTIONS, "nosniff");
 			PrintWriter writer = null;
 			try {
 				writer = response.getWriter();

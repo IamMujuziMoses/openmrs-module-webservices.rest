@@ -19,11 +19,13 @@ import org.openmrs.api.context.Context;
 import org.openmrs.api.db.ClobDatatypeStorage;
 import org.openmrs.module.webservices.rest.web.RestTestConstants1_9;
 import org.openmrs.module.webservices.rest.web.v1_0.controller.MainResourceControllerTest;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.mock.web.MockMultipartHttpServletRequest;
 import org.springframework.web.bind.annotation.RequestMethod;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 
@@ -60,6 +62,26 @@ public class ClobDatatypeStorageControllerTest extends MainResourceControllerTes
 		Assertions.assertEquals(HttpServletResponse.SC_CREATED, response.getStatus());
 		Assertions.assertEquals(before + 1, getAllCount());
 	}
+
+	@Test
+	public void shouldStoreClobDataWhenContentEncodingHeaderIsNotACharset() throws Exception {
+		long before = getAllCount();
+
+		byte[] fileData = IOUtils.toByteArray(getClass().getClassLoader().getResourceAsStream(
+		    RestTestConstants1_9.TEST_RESOURCE_FILE));
+
+		MockMultipartFile toUpload = new MockMultipartFile("file", "formresource.txt", "text/plain", fileData);
+
+		MockMultipartHttpServletRequest request = newUploadRequest(getURI());
+		// Content-Encoding describes compression, not a charset; it must not be used as the read charset.
+		request.addHeader("Content-Encoding", "gzip");
+		request.addFile(toUpload);
+
+		MockHttpServletResponse response = handle(request);
+
+		Assertions.assertEquals(HttpServletResponse.SC_CREATED, response.getStatus());
+		Assertions.assertEquals(before + 1, getAllCount());
+	}
 	
 	@Test
 	public void shouldReturnClobDataAsFileByUuid() throws Exception {
@@ -73,7 +95,40 @@ public class ClobDatatypeStorageControllerTest extends MainResourceControllerTes
 		
 		Assertions.assertEquals(size, response.getContentAsByteArray().length);
 	}
-	
+
+	@Test
+	public void shouldRoundTripMultibyteContentAsUtf8() throws Exception {
+		String content = "Ωαςαβγ – café – 日本語 – ☺";
+
+		MockMultipartFile toUpload = new MockMultipartFile("file", "multibyte.txt", "text/plain",
+		        content.getBytes(StandardCharsets.UTF_8));
+
+		MockMultipartHttpServletRequest postRequest = newUploadRequest(getURI());
+		postRequest.addFile(toUpload);
+
+		MockHttpServletResponse postResponse = handle(postRequest);
+		Assertions.assertEquals(HttpServletResponse.SC_CREATED, postResponse.getStatus());
+		String uuid = postResponse.getContentAsString();
+
+		MockHttpServletResponse getResponse = handle(newGetRequest(getURI() + "/" + uuid));
+
+		// The controller set text/plain;charset=UTF-8, so getContentAsString() decodes the body as UTF-8.
+		Assertions.assertEquals(content, getResponse.getContentAsString());
+	}
+
+	@Test
+	public void shouldServeClobDataWithNonSniffableHeadersToPreventStoredXss() throws Exception {
+		MockHttpServletResponse response = handle(newGetRequest(getURI() + "/"
+		        + RestTestConstants1_9.CLOBDATATYPESTORAGE_RESOURCE_UUID));
+
+		// Assert the status first so a missing fixture row reads as a 404 failure, not a header regression.
+		Assertions.assertEquals(HttpServletResponse.SC_OK, response.getStatus());
+		// Compare parsed media types so the test pins header semantics (type, subtype, charset), not formatting.
+		Assertions.assertEquals(MediaType.parseMediaType("text/plain;charset=UTF-8"),
+		    MediaType.parseMediaType(response.getContentType()));
+		Assertions.assertEquals("nosniff", response.getHeader("X-Content-Type-Options"));
+	}
+
 	@Test
 	public void shouldDeleteAnExistingClobData() throws Exception {
 		ClobDatatypeStorage clob = datatypeService
